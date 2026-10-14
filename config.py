@@ -47,3 +47,34 @@ DEBUG_DIR = "debug"
 
 # Лог
 LOG_FILE = "app.log"
+
+
+# === GPIO (Raspberry Pi 5 через gpiozero+lgpio) ===
+# Выключено по умолчанию — на Windows/dev ничего не тянем.
+GPIO_ENABLED = False
+
+# Выходные пины. Роли:
+#   "alarm" — активен при STATUS_ALARM (подтверждённое изменение);
+#   "ready" — активен, когда задан эталон и камера работает;
+#   можно завести произвольные роли и дёргать их из кода через gpio.set_output(role, True/False).
+GPIO_OUTPUTS = [
+    {"pin": 17, "role": "alarm"},    # по желанию — как было
+    {"pin": 5,  "role": "heartbeat"},# ← мигает, пока всё ОК
+]
+
+# Входные пины. Поля:
+#   pull   — "up" | "down" | None (внешняя подтяжка)
+#   action — "set_reference" | "detect" | "none"
+#   edge   — "falling" | "rising" (что считаем срабатыванием)
+GPIO_INPUTS = [
+    # {"pin": 22, "pull": "up",   "action": "set_reference", "edge": "falling"},
+    # {"pin": 23, "pull": "up",   "action": "detect",        "edge": "falling"},
+]
+
+# Полярность активного уровня выходов (True: высокий уровень = активен).
+GPIO_ACTIVE_HIGH = True
+
+# Длительность импульса тревоги, мс.
+#   0  — держим уровень, пока статус ALARM;
+#   >0 — импульс на КАЖДЫЙ переход NORMAL -> ALARM (удобно для "звонка").
+GPIO_PULSE_MS = 0

@@ -1,9 +1,10 @@
 import logging
 import sys
+from gpio import gpio
 from pathlib import Path
 
 import cv2
-from PySide6.QtCore import QLocale, QMetaObject, QThread, QTranslator, Qt
+from PySide6.QtCore import QLocale, QMetaObject, QThread, QTranslator, Qt, QTimer, Slot
 from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
@@ -116,7 +117,32 @@ class MainWindow(QMainWindow):
         self._processor.detection_done.connect(self._on_detection_done)
         self._process_thread.start()
 
+        self._current_status = "NO_CAMERA"
+        self._heartbeat_state = False
+        self._hb_timer = QTimer(self)
+        self._hb_timer.setInterval(200)
+        self._hb_timer.timeout.connect(self._tick_heartbeat)
+        self._hb_timer.start()
+
+        # GPIO: связываем входные пины с действиями и инициализируем железо.
+        # Колбэки зовут те же методы, что и кнопки; они используют
+        # QMetaObject.invokeMethod(QueuedConnection) — безопасно из чужого потока.
+        gpio.set_callbacks({
+            "set_reference": lambda: QMetaObject.invokeMethod(
+                 self, "_on_set_reference", Qt.ConnectionType.QueuedConnection),
+            "detect": lambda: QMetaObject.invokeMethod(
+                 self, "_on_detect", Qt.ConnectionType.QueuedConnection),
+        })
+        gpio.setup()
+
         self._start_capture(self.camera_combo.currentData())
+
+    def _tick_heartbeat(self):
+        if self._current_status == STATUS_ALARM:
+            self._heartbeat_state = False
+        else:
+            self._heartbeat_state = not self._heartbeat_state
+        gpio.set_output("heartbeat", self._heartbeat_state)
 
     def _start_capture(self, camera_index):
         if camera_index is None:
@@ -157,9 +183,12 @@ class MainWindow(QMainWindow):
         self.reference_label.setText(self.tr("Reference: NOT SET"))
         self.trigger_label.setText(self.tr("Trigger: -"))
         self._set_status("NO_CAMERA")
+        self._current_status = "NO_CAMERA"
         self.set_reference_button.setEnabled(False)
         self.detect_button.setEnabled(False)
         self._start_capture(self.camera_combo.currentData())
+        gpio.set_ready(False)
+
 
     def _update_threshold_label(self, slider_value: int):
         percent = slider_value / 10.0
@@ -185,10 +214,12 @@ class MainWindow(QMainWindow):
             f"font-family: monospace; font-size: 14px; font-weight: bold; color: {color};"
         )
 
+    @Slot()
     def _on_set_reference(self):
         QMetaObject.invokeMethod(self._processor, "on_set_reference",
                                  Qt.ConnectionType.QueuedConnection)
 
+    @Slot()
     def _on_detect(self):
         self.detect_button.setEnabled(False)
         QMetaObject.invokeMethod(self._processor, "on_detect",
@@ -215,11 +246,18 @@ class MainWindow(QMainWindow):
         self.trigger_label.setText(self.tr("Trigger: -"))
         self.set_reference_button.setEnabled(False)
         self.detect_button.setEnabled(False)
+        self._current_status = "NO_CAMERA"
+        gpio.set_alarm(False)
+        gpio.set_ready(False)
 
     def _on_result(self, frame, status: str, elapsed_ms: float, has_reference: bool,
                    change_ratio: float, boxes: list):
         # 30 FPS: тяжёлая обработка уже сделана в Processor, здесь только
         # BGR->RGB + QImage. copy() отвязывает QPixmap от numpy-буфера.
+
+        self._current_status = status
+        self._set_status(status)
+
         try:
             if frame is None or getattr(frame, "size", 0) == 0:
                 return
@@ -243,7 +281,6 @@ class MainWindow(QMainWindow):
         except Exception:
             return
 
-        self._set_status(status)
         self.reference_label.setText(
             self.tr("Reference: OK") if has_reference else self.tr("Reference: NOT SET")
         )
@@ -254,6 +291,11 @@ class MainWindow(QMainWindow):
         self.detect_button.setEnabled(has_reference)
 
     def closeEvent(self, event):
+        self._hb_timer.stop()
+        gpio.set_output("heartbeat", False)
+        gpio.set_alarm(False)
+        gpio.set_ready(False)
+        gpio.close()
         self._stop_capture()
         self._process_thread.quit()
         self._process_thread.wait(3000)
