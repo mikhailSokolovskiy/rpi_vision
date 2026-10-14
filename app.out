@@ -1,0 +1,8 @@
+nohup: ignoring input
+2026-10-07 00:45:55,915 INFO camera: Available cameras: [0] (fixed)
+[ WARN:0@1.003] global cap_gstreamer.cpp:1777 open OpenCV | GStreamer warning: Cannot query video position: status=0, value=-1, duration=-1
+[ WARN:0@1.003] global cap_gstreamer.cpp:2152 setProperty OpenCV | GStreamer warning: GStreamer: unhandled property
+[ WARN:0@1.003] global cap_gstreamer.cpp:2152 setProperty OpenCV | GStreamer warning: GStreamer: unhandled property
+[ WARN:0@1.003] global cap_gstreamer.cpp:2152 setProperty OpenCV | GStreamer warning: GStreamer: unhandled property
+2026-10-07 00:45:56,566 INFO camera: Camera initialized (index=0, backend=opencv flag=0)
+2026-10-07 00:47:19,251 INFO controller: Reference created (5 frames)

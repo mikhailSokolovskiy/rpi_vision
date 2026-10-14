@@ -77,11 +77,11 @@ def check_frame(frame) -> dict:
         _save_debug("mask.png", result["mask"])
     del result["diff"], result["mask"]
 
-    log.info(
-        "Check: changed=%s confirmed=%s ratio=%.4f pixels=%d time=%.1fms",
-        result["changed"], confirmed, result["change_ratio"],
-        result["changed_pixels"], elapsed_ms,
-    )
+    # log.info(
+    #     "Check: changed=%s confirmed=%s ratio=%.4f pixels=%d time=%.1fms",
+    #     result["changed"], confirmed, result["change_ratio"],
+    #     result["changed_pixels"], elapsed_ms,
+    # )
     return result
 
 
@@ -117,7 +117,7 @@ def detect_change(frame=None, frames=None) -> dict:
             break
 
     confirmed = bool(result.get("confirmed"))
-    log.info("Change %s", "detected" if confirmed else "not detected")
+    # log.info("Change %s", "detected" if confirmed else "not detected")
     return {
         "changed": confirmed,
         "change_ratio": result.get("change_ratio", 0.0),

@@ -4,9 +4,11 @@
 CAMERA_INDEX = 0
 # auto: Picamera2 если доступна (RPi), иначе OpenCV (Windows-тесты).
 # Можно явно зафиксировать: "opencv" или "picamera2".
-CAMERA_BACKEND = "auto"
+CAMERA_BACKEND = "opencv"
+MV_SDK_PATH="/home/elegir/Desktop/sdk camera/demo/python_demo"
+
 # на Windows/MSMF фиксация экспозиции роняет FPS до ~1; включать на RPi (Picamera2)
-LOCK_CAMERA_PARAMS = False
+LOCK_CAMERA_PARAMS = True
 
 # Ограничение выдачи сверху: не чаще 30 FPS. Самой камере FPS
 # не навязываем (CAP_PROP_FPS не трогаем) — только дросселируем
@@ -14,15 +16,16 @@ LOCK_CAMERA_PARAMS = False
 CAPTURE_MAX_FPS = 30
 # Порядок перебора VideoCapture-бэкендов на Windows (headless-пакета достаточно,
 # здесь важен именно флаг, а не замена на opencv-python).
-OPENCV_BACKENDS_PREFER = ("DSHOW", "MSMF")
+# OPENCV_BACKENDS_PREFER = ("DSHOW", "MSMF")
+OPENCV_BACKENDS_PREFER = ("V4L2")
 
 # Предпросмотр в GUI
 PREVIEW_WIDTH = 640
 PREVIEW_HEIGHT = 480
 
 # Рабочее разрешение алгоритма
-IMAGE_WIDTH = 512
-IMAGE_HEIGHT = 512
+IMAGE_WIDTH = 256
+IMAGE_HEIGHT = 256
 
 # Эталон
 REFERENCE_FRAMES = 5
