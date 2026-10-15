@@ -19,10 +19,10 @@ import camera as camera_module
 import config
 from autorun import setup as autorun_setup
 from camera_panel import NO_CAMERA, CameraPanel
-from processing import STATUS_ALARM
 
 BASE_DIR = Path(__file__).parent
-_HB_MUTED_STATUSES = (STATUS_ALARM, STATUS_NO_REFERENCE, "NO_CAMERA")
+
+from processing import STATUS_ALARM, STATUS_NO_REFERENCE, STATUS_NORMAL
 
 # Минимальная ширина панели камеры: три кнопки в ряд должны поместиться,
 # когда PREVIEW_WIDTH делится между камерами.
@@ -67,7 +67,9 @@ class MainWindow(QMainWindow):
         cameras_row.addLayout(self._build_threshold_slider())
         layout.addLayout(cameras_row)
 
-        self._heartbeat_state = False
+        self._current_status = NO_CAMERA
+        self._heartbeat_state = True
+        gpio.set_output("heartbeat", True)
         self._hb_timer = QTimer(self)
         self._hb_timer.setInterval(200)
         self._hb_timer.timeout.connect(self._tick_heartbeat)
@@ -81,7 +83,6 @@ class MainWindow(QMainWindow):
             "set_reference": self._on_gpio_action("arm_reference"),
             "detect": self._on_gpio_action("request_detect"),
         })
-        gpio.setup()
         gpio.set_ready(False)
 
     def _build_threshold_slider(self) -> QVBoxLayout:
@@ -124,47 +125,22 @@ class MainWindow(QMainWindow):
 
     def _on_panel_status(self, slot: int, status: str):
         self._statuses[slot] = status
-        if status == NO_CAMERA:
-            # Камера отвалилась: тревогу этой панели гасим, готовность снимаем.
-            gpio.set_alarm(False)
-            gpio.set_ready(False)
+        any_alarm = any(s == STATUS_ALARM for s in self._statuses)
+        any_no_camera = any(s == NO_CAMERA for s in self._statuses)
+        any_no_reference = any(s == STATUS_NO_REFERENCE for s in self._statuses)
 
-<<<<<<< HEAD
-        self._set_status("NO_CAMERA")
-        self.change_label.setText(self.tr("Change: -"))
-        self.trigger_label.setText(self.tr("Trigger: -"))
+        if any_alarm:
+            self._current_status = STATUS_ALARM
+        elif any_no_camera:
+            self._current_status = NO_CAMERA
+        elif any_no_reference:
+            self._current_status = STATUS_NO_REFERENCE
+        else:
+            self._current_status = STATUS_NORMAL
 
-        self._capture_thread = None
-        self._process_thread = QThread(self)
-        self._processor = Processor()
-        self._processor.moveToThread(self._process_thread)
-        self._processor.result_ready.connect(self._on_result)
-        self._processor.detection_done.connect(self._on_detection_done)
-        self._process_thread.start()
+        gpio.set_ready(not any_no_camera and not any_no_reference)
 
-        self._current_status = "NO_CAMERA"
-        self._heartbeat_state = True
-        self._hb_timer = QTimer(self)
-        self._hb_timer.setInterval(200)
-        self._hb_timer.timeout.connect(self._tick_heartbeat)
-        self._hb_timer.start()
 
-        # GPIO: связываем входные пины с действиями и инициализируем железо.
-        # Колбэки зовут те же методы, что и кнопки; они используют
-        # QMetaObject.invokeMethod(QueuedConnection) — безопасно из чужого потока.
-        gpio.set_callbacks({
-            "set_reference": lambda: QMetaObject.invokeMethod(
-                 self, "_on_set_reference", Qt.ConnectionType.QueuedConnection),
-            "detect": lambda: QMetaObject.invokeMethod(
-                 self, "_on_detect", Qt.ConnectionType.QueuedConnection),
-        })
-
-        self._start_capture(self.camera_combo.currentData())
-
-    def _tick_heartbeat(self):
-        if self._current_status in _HB_MUTED_STATUSES:
-            self._heartbeat_state = True
-=======
     def _on_gpio_action(self, method: str):
         def _call():
             for panel in self._panels:
@@ -172,12 +148,10 @@ class MainWindow(QMainWindow):
         return _call
 
     def _tick_heartbeat(self):
-        # Тревога по любой из камер: светодиод не мигает.
-        if STATUS_ALARM in self._statuses:
-            self._heartbeat_state = False
->>>>>>> fb63d8a4fd28f6730383129a296e46da55f138c6
-        else:
+        if self._current_status == STATUS_NORMAL:
             self._heartbeat_state = not self._heartbeat_state
+        else:
+            self._heartbeat_state = True
         gpio.set_output("heartbeat", self._heartbeat_state)
         print(self._heartbeat_state)
 
@@ -191,7 +165,6 @@ class MainWindow(QMainWindow):
         # config.CHANGE_RATIO_THRESHOLD при каждом кадре.
         config.CHANGE_RATIO_THRESHOLD = slider_value / 1000.0
         self._update_threshold_label(slider_value)
-<<<<<<< HEAD
         controller.reset_confirmation()
 
     def _set_status(self, status: str):
@@ -281,10 +254,8 @@ class MainWindow(QMainWindow):
             self.last_check_label.setText(self.tr("Last check: {} ms").format(round(elapsed_ms, 1)))
         self.set_reference_button.setEnabled(True)
         self.detect_button.setEnabled(has_reference)
-=======
         for panel in self._panels:
             panel.reset_confirmation()
->>>>>>> fb63d8a4fd28f6730383129a296e46da55f138c6
 
     def closeEvent(self, event):
         self._hb_timer.stop()
@@ -308,14 +279,11 @@ def main():
         ],
     )
 
-<<<<<<< HEAD
     gpio.setup()
 
-=======
     # config.AUTORUN -> юнит systemd на автозапуск. Ошибки не фатальны:
     # autorun сам логирует и возвращает False.
     autorun_setup()
->>>>>>> fb63d8a4fd28f6730383129a296e46da55f138c6
 
     app = QApplication(sys.argv)
 
