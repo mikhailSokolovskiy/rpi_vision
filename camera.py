@@ -6,6 +6,7 @@ import cv2
 import numpy as np
 
 import config
+import v4l2
 
 log = logging.getLogger(__name__)
 
@@ -128,12 +129,19 @@ class Camera:
     def _open_opencv_locked(self, index) -> bool:
         # Явный бэкенд важен: без него Windows уходит в FFMPEG
         # (WARN ... libavdevice) и open/проба камер виснет.
+        # Настройки V4L2 — до открытия: драйвер отдаёт текущие значения
+        # только пока устройство не стримит.
+        applied = v4l2.apply_for_index(index)
         for flag in _opencv_backend_flags():
             cap = cv2.VideoCapture(index, flag)
             try:
                 if cap.isOpened():
-                    if config.LOCK_CAMERA_PARAMS:
+                    if config.LOCK_CAMERA_PARAMS and not applied:
                         self._fix_params(cap)
+                    elif applied:
+                        # _fix_params включает автоэкспозицию через OpenCV и
+                        # затёрла бы экспозицию из config.V4L2_CONTROLS.
+                        log.debug("OpenCV exposure fix skipped (V4L2_CONTROLS)")
                     self._cap = cap
                     self._backend = "opencv"
                     log.info("Camera initialized (index=%s, backend=opencv flag=%s)", index, flag)
@@ -302,11 +310,33 @@ def initialize_camera(index=None) -> bool:
     return camera.open(index)
 
 
+def _picamera2_indices(max_index: int = 4) -> list[int]:
+    """Индексы камер, которые видит Picamera2 (CSI и USB через libcamera).
+
+    Нужно для CAMERA_COUNT > 1. Если определить не удалось — пустой список,
+    вызывающий код откатится на старую проверку открытием.
+    """
+    try:
+        from picamera2 import Picamera2
+    except Exception as exc:  # noqa: BLE001
+        log.debug("Picamera2 import failed: %s", exc)
+        return []
+    try:
+        infos = Picamera2.global_camera_info()
+        if infos:
+            return list(range(len(infos)))
+    except Exception as exc:  # noqa: BLE001 — на старых версиях метода нет
+        log.debug("global_camera_info unavailable: %s", exc)
+        return []
+    return []
+
+
 def list_cameras(max_index: int = 24) -> list[int]:
     """Возвращает индексы доступных камер.
 
-    На Picamera2-бэкенде проба через VideoCapture бессмысленна —
-    возвращаем [CAMERA_INDEX] если Picamera2 открывается.
+    На Picamera2-бэкенде проба через VideoCapture бессмысленна — там
+    перечисляем камеры средствами Picamera2, а если это не вышло,
+    возвращаем [CAMERA_INDEX] если Picamera2 вообще открывается.
     """
     want = _resolve_backend()
     if want == "mindvision":
@@ -315,6 +345,10 @@ def list_cameras(max_index: int = 24) -> list[int]:
         log.info("Available cameras: %s (mindvision)", [config.CAMERA_INDEX] if ok else [])
         return [config.CAMERA_INDEX] if ok else []
     if want == "picamera2":
+        indices = _picamera2_indices()
+        if indices:
+            log.info("Available cameras: %s (picamera2)", indices)
+            return indices
         try:
             if camera.open(config.CAMERA_INDEX):
                 log.info("Available cameras: [%s] (picamera2)", config.CAMERA_INDEX)

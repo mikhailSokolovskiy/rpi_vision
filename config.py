@@ -2,6 +2,11 @@
 
 # Камера
 CAMERA_INDEX = 0
+# Сколько камер показывать одновременно: 1 или 2. Для каждой — своё поле
+# превью, свой эталон, свои кнопки (в т.ч. Set reference для своей области).
+# Если камер меньше, чем панелей, лишние панели просто показывают
+# "Camera not available" и оживают по кнопке Refresh, когда камера появится.
+CAMERA_COUNT = 1
 # auto: Picamera2 если доступна (RPi), иначе OpenCV (Windows-тесты).
 # Можно явно зафиксировать: "opencv" или "picamera2".
 CAMERA_BACKEND = "opencv"
@@ -9,6 +14,48 @@ MV_SDK_PATH="/home/elegir/Desktop/sdk camera/demo/python_demo"
 
 # на Windows/MSMF фиксация экспозиции роняет FPS до ~1; включать на RPi (Picamera2)
 LOCK_CAMERA_PARAMS = True
+
+# === Настройки камеры через V4L2 (v4l2-ctl, пакет v4l-utils) ===
+# Те же команды, что и руками в консоли, только при открытии камеры:
+#   v4l2-ctl -d /dev/video0 -c auto_exposure=1
+# Ключ — индекс камеры (как в списке камер), значение — {контрол: значение}.
+# Ключа для камеры нет -> её настройки не трогаем. Контрола, которого нет
+# на этой камере, будет пропущен с предупреждением в лог.
+# ПОРЯДОК ВАЖЕН: авторежимы (auto_exposure, white_balance_temperature_auto)
+# ставятся ПЕРВЫМИ, иначе камера сразу вернёт авторежим и затрёт ручные
+# экспозицию/баланс белого.
+#
+# Типичные контролы UVC-камер (раскомментируй нужные):
+#   brightness, contrast, saturation, hue, sharpness, gamma, gain,
+#   backlight_compensation, focus_absolute, focus_auto,
+#   exposure_absolute, exposure_auto_priority, auto_exposure (меню),
+#   white_balance_temperature, white_balance_temperature_auto,
+#   power_line_frequency (меню: 1 = 50 Гц, 2 = 60 Гц — от мерцания ламп).
+V4L2_APPLY_ON_OPEN = True
+V4L2_CONTROLS = {
+    0: {
+        "auto_exposure": 1,        # 0 = Auto, 1 = Manual (фиксированная экспозиция)
+        "exposure_absolute": 300,  # единицы V4L2, по 100 мкс: 300 = 30 мс
+        "power_line_frequency": 1, # 1 = 50 Гц
+        "white_balance_temperature_auto": 0,
+        "white_balance_temperature": 4200,
+        # "brightness": 0,
+        # "contrast": 0,
+        # "gamma": 0,
+        # "saturation": 64,
+        # "hue": 0,
+        # "sharpness": 0,
+        # "gain": 0,
+        # "backlight_compensation": 0,
+        # "exposure_auto_priority": 0,
+        # "focus_absolute": 0,
+    },
+}
+# Узел V4L2 для индекса камеры (индекс OpenCV = номер узла).
+V4L2_DEVICE_TEMPLATE = "/dev/video{index}"
+# Сюда пишутся правки из GUI-диалога; перекрывают V4L2_CONTROLS при старте.
+# Удалил файл — снова действуют значения из этого файла.
+V4L2_SETTINGS_FILE = "camera_settings.json"
 
 # Ограничение выдачи сверху: не чаще 30 FPS. Самой камере FPS
 # не навязываем (CAP_PROP_FPS не трогаем) — только дросселируем
@@ -19,17 +66,15 @@ CAPTURE_MAX_FPS = 30
 # OPENCV_BACKENDS_PREFER = ("DSHOW", "MSMF")
 OPENCV_BACKENDS_PREFER = ("V4L2")
 
-# Предпросмотр в GUI
+# Предпросмотр в GUI. PREVIEW_WIDTH — суммарная ширина всех полей превью:
+# при CAMERA_COUNT = 2 делится пополам (но не ниже 380 px на панель, иначе
+# три кнопки в ряд не помещаются — см. MIN_PANEL_WIDTH в main.py).
 PREVIEW_WIDTH = 640
 PREVIEW_HEIGHT = 480
 
 # Рабочее разрешение алгоритма
 IMAGE_WIDTH = 256
 IMAGE_HEIGHT = 256
-
-# Область интереса: доли кадра (0..1) x0, y0, x1, y1; None = весь кадр.
-# Ставится мышкой в GUI, применяется в preprocessing.crop_roi.
-ROI = None
 
 # Эталон
 REFERENCE_FRAMES = 5

@@ -70,6 +70,9 @@ class VideoView(QLabel):
         self._anchor = None
         self._rubber = None
         self.update()
+        # Мышку можно увести за край виджета (Qt держит захват до отпускания) —
+        # обрезаем по границам превью, иначе ROI уедет за 1.0.
+        rect = rect.intersected(self.rect())
         if rect.width() < MIN_ROI_PX or rect.height() < MIN_ROI_PX:
             return
         width = max(self.width(), 1)
