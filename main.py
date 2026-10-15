@@ -21,8 +21,10 @@ from PySide6.QtWidgets import (
 import camera as camera_module
 import config
 import controller
+from autorun import setup as autorun_setup
 from capture import CaptureThread
 from processing import STATUS_ALARM, STATUS_NO_REFERENCE, STATUS_NORMAL, Processor
+from video_view import VideoView
 
 BASE_DIR = Path(__file__).parent
 
@@ -45,14 +47,18 @@ class MainWindow(QMainWindow):
             self.camera_combo.addItem(f"Camera {index}", userData=index)
         self.camera_combo.activated.connect(self._on_camera_selected)
         camera_row.addWidget(self.camera_combo, stretch=1)
+        self.refresh_button = QPushButton(self.tr("Refresh"))
+        self.refresh_button.clicked.connect(self._on_refresh_cameras)
+        camera_row.addWidget(self.refresh_button)
         layout.addLayout(camera_row)
 
         video_row = QHBoxLayout()
-        self.video_label = QLabel()
+        self.video_label = VideoView()
         self.video_label.setFixedSize(config.PREVIEW_WIDTH, config.PREVIEW_HEIGHT)
         self.video_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.video_label.setStyleSheet("background-color: #202020; color: #aaaaaa; border: 1px solid #444;")
         self.video_label.setText(self.tr("Camera not available"))
+        self.video_label.roi_selected.connect(self._on_roi_selected)
         video_row.addWidget(self.video_label, alignment=Qt.AlignmentFlag.AlignHCenter)
 
         # Вертикальный слайдер порога тревоги (доля изменившихся пикселей).
@@ -95,6 +101,11 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.trigger_label)
 
         buttons_row = QHBoxLayout()
+        self.roi_button = QPushButton(self.tr("Select area"))
+        self.roi_button.setCheckable(True)
+        self.roi_button.setEnabled(False)
+        self.roi_button.toggled.connect(self._on_roi_toggled)
+        buttons_row.addWidget(self.roi_button)
         self.set_reference_button = QPushButton(self.tr("Set reference"))
         self.set_reference_button.setEnabled(False)
         self.set_reference_button.clicked.connect(self._on_set_reference)
@@ -118,6 +129,9 @@ class MainWindow(QMainWindow):
         self._process_thread.start()
 
         self._current_status = "NO_CAMERA"
+        # Эталон ждёт выделенной области: Set reference взводит флаг,
+        # а снимается он уже на первом нарисованном ROI.
+        self._reference_pending = False
         self._heartbeat_state = False
         self._hb_timer = QTimer(self)
         self._hb_timer.setInterval(200)
@@ -177,17 +191,63 @@ class MainWindow(QMainWindow):
             # поэтому долгое блочивание GUI здесь исключено.
             thread.wait(3000)
 
+    @Slot()
+    def _on_refresh_cameras(self):
+        self.refresh_button.setEnabled(False)
+        try:
+            current = self.camera_combo.currentData()
+            # list_cameras() для picamera2/mindvision переоткрывает общий
+            # camera.open()/close() — живой захват это убьёт, глушим заранее.
+            self._stop_capture()
+            cameras = camera_module.list_cameras()
+            self.camera_combo.clear()
+            for index in cameras:
+                self.camera_combo.addItem(f"Camera {index}", userData=index)
+            if not cameras:
+                self._on_camera_error()
+                return
+            # Камера могла сменить индекс/отвалиться — берём ближайшую.
+            position = self.camera_combo.findData(current)
+            self.camera_combo.setCurrentIndex(position if position >= 0 else 0)
+            self._on_camera_selected()
+        finally:
+            self.refresh_button.setEnabled(True)
+
     def _on_camera_selected(self):
         self._stop_capture()
         controller.clear_reference()
+        self._reference_pending = False
         self.reference_label.setText(self.tr("Reference: NOT SET"))
         self.trigger_label.setText(self.tr("Trigger: -"))
         self._set_status("NO_CAMERA")
         self._current_status = "NO_CAMERA"
+        self.roi_button.setEnabled(False)
         self.set_reference_button.setEnabled(False)
         self.detect_button.setEnabled(False)
         self._start_capture(self.camera_combo.currentData())
         gpio.set_ready(False)
+
+    @Slot(bool)
+    def _on_roi_toggled(self, checked: bool):
+        self.video_label.set_selection_enabled(checked)
+        if not checked:
+            # Выключили режим, не выделив область — ждать эталона больше нечего.
+            self._reference_pending = False
+
+    @Slot(float, float, float, float)
+    def _on_roi_selected(self, x0: float, y0: float, x1: float, y1: float):
+        config.ROI = (x0, y0, x1, y1)
+        # Сменилась геометрия кадра — прежний эталон больше не годится.
+        controller.clear_reference()
+        self.reference_label.setText(self.tr("Reference: NOT SET"))
+        self.change_label.setText(self.tr("Change: -"))
+        self._set_status(STATUS_NO_REFERENCE)
+        self._current_status = STATUS_NO_REFERENCE
+        self.detect_button.setEnabled(False)
+        if self._reference_pending:
+            self._reference_pending = False
+            QMetaObject.invokeMethod(self._processor, "on_set_reference",
+                                     Qt.ConnectionType.QueuedConnection)
 
 
     def _update_threshold_label(self, slider_value: int):
@@ -216,8 +276,11 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def _on_set_reference(self):
-        QMetaObject.invokeMethod(self._processor, "on_set_reference",
-                                 Qt.ConnectionType.QueuedConnection)
+        # Эталон снимается с выбранной области: включаем режим выделения
+        # и ждём рамку. Пока область не нарисована — только взводим ожидание.
+        if not self.roi_button.isChecked():
+            self.roi_button.setChecked(True)
+        self._reference_pending = True
 
     @Slot()
     def _on_detect(self):
@@ -240,10 +303,12 @@ class MainWindow(QMainWindow):
         self.video_label.setPixmap(QPixmap())
         self.video_label.setText(self.tr("Camera not available"))
         self._set_status("NO_CAMERA")
+        self._reference_pending = False
         self.reference_label.setText(self.tr("Reference: NOT SET"))
         self.change_label.setText(self.tr("Change: -"))
         self.last_check_label.setText(self.tr("Last check: -"))
         self.trigger_label.setText(self.tr("Trigger: -"))
+        self.roi_button.setEnabled(False)
         self.set_reference_button.setEnabled(False)
         self.detect_button.setEnabled(False)
         self._current_status = "NO_CAMERA"
@@ -281,12 +346,18 @@ class MainWindow(QMainWindow):
         except Exception:
             return
 
-        self.reference_label.setText(
-            self.tr("Reference: OK") if has_reference else self.tr("Reference: NOT SET")
-        )
+        # Пока ждём выделения области — показываем подсказку, а не "NOT SET":
+        # смена текста на каждом кадре сбила бы её за 30 мс.
+        if self._reference_pending:
+            self.reference_label.setText(self.tr("Reference: draw the area"))
+        else:
+            self.reference_label.setText(
+                self.tr("Reference: OK") if has_reference else self.tr("Reference: NOT SET")
+            )
         if has_reference:
             self.change_label.setText(self.tr("Change: {} %").format(round(change_ratio * 100, 2)))
             self.last_check_label.setText(self.tr("Last check: {} ms").format(round(elapsed_ms, 1)))
+        self.roi_button.setEnabled(True)
         self.set_reference_button.setEnabled(True)
         self.detect_button.setEnabled(has_reference)
 
@@ -313,6 +384,10 @@ def main():
             logging.FileHandler(BASE_DIR / config.LOG_FILE, encoding="utf-8"),
         ],
     )
+
+    # config.AUTORUN -> юнит systemd на автозапуск. Ошибки не фатальны:
+    # autorun сам логирует и возвращает False.
+    autorun_setup()
 
     app = QApplication(sys.argv)
 

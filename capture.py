@@ -5,6 +5,7 @@ from PySide6.QtCore import QThread, Signal
 
 import camera as camera_module
 import config
+from preprocessing import crop_roi
 
 
 class CaptureThread(QThread):
@@ -41,7 +42,7 @@ class CaptureThread(QThread):
                 break
             try:
                 preview = cv2.resize(
-                    frame,
+                    crop_roi(frame),
                     (config.PREVIEW_WIDTH, config.PREVIEW_HEIGHT),
                     interpolation=cv2.INTER_AREA,
                 )

@@ -34,7 +34,10 @@ def set_reference(frames=None) -> bool:
     global _consecutive_hits
     try:
         if frames is None:
-            frames = [camera_module.capture_frame() for _ in range(config.REFERENCE_FRAMES)]
+            # Прямой захват идёт мимо CaptureThread — кропим ROI сами,
+            # иначе эталон не совпадёт по геометрии с check_frame.
+            frames = [preprocessing.crop_roi(camera_module.capture_frame())
+                      for _ in range(config.REFERENCE_FRAMES)]
     except camera_module.CameraError as exc:
         log.error("Camera error while setting reference: %s", exc)
         return False
@@ -107,7 +110,7 @@ def detect_change(frame=None, frames=None) -> dict:
         sequence = []
         try:
             for _ in range(config.CONFIRMATION_FRAMES):
-                sequence.append(camera_module.capture_frame())
+                sequence.append(preprocessing.crop_roi(camera_module.capture_frame()))
         except camera_module.CameraError as exc:
             log.error("Camera error during detect_change: %s", exc)
             return {"changed": False, "error": CAMERA_ERROR}

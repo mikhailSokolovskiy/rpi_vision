@@ -27,6 +27,10 @@ PREVIEW_HEIGHT = 480
 IMAGE_WIDTH = 256
 IMAGE_HEIGHT = 256
 
+# Область интереса: доли кадра (0..1) x0, y0, x1, y1; None = весь кадр.
+# Ставится мышкой в GUI, применяется в preprocessing.crop_roi.
+ROI = None
+
 # Эталон
 REFERENCE_FRAMES = 5
 
@@ -47,6 +51,17 @@ DEBUG_DIR = "debug"
 
 # Лог
 LOG_FILE = "app.log"
+
+
+# === Автозапуск (systemd) ===
+# True -> при старте программа ставит systemd-юнит и включает его,
+# т.е. приложение само поднимается при загрузке системы.
+# Нужны права root (запись в /etc/systemd/system + systemctl enable).
+# Снять уже установленный автозапуск:
+#   uv run python -c "import autorun; autorun.disable()"
+AUTORUN = False
+# DISPLAY для юнита. На Raspberry Pi OS (X11) обычно ":0".
+AUTORUN_DISPLAY = ":0"
 
 
 # === GPIO (Raspberry Pi 5 через gpiozero+lgpio) ===
