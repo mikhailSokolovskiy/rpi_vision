@@ -39,7 +39,7 @@ class CameraPanel(QWidget):
         self.slot_index = slot_index
         # Область интереса камеры: доли кадра (x0, y0, x1, y1) или None.
         # Читается захватом и контроллером, меняется только из GUI-потока.
-        self.roi = None
+        self.roi = getattr(config, "DEFAULT_ROI", None)
         self._status = NO_CAMERA
         self._reference_pending = False
         self._capture_thread = None
@@ -98,6 +98,10 @@ class CameraPanel(QWidget):
         self.roi_button.setEnabled(False)
         self.roi_button.toggled.connect(self._on_roi_toggled)
         buttons_row.addWidget(self.roi_button)
+        self.reset_roi_button = QPushButton(self.tr("Reset zone"))
+        self.reset_roi_button.setEnabled(False)
+        self.reset_roi_button.clicked.connect(self._on_reset_roi)
+        buttons_row.addWidget(self.reset_roi_button)
         self.set_reference_button = QPushButton(self.tr("Set reference"))
         self.set_reference_button.setEnabled(False)
         self.set_reference_button.clicked.connect(self._on_set_reference)
@@ -145,12 +149,14 @@ class CameraPanel(QWidget):
         self.stop_capture()
         self.controller.clear_reference()
         self._reference_pending = False
+        self.roi = getattr(config, "DEFAULT_ROI", None)
         self.reference_label.setText(self.tr("Reference: NOT SET"))
         self.trigger_label.setText(self.tr("Trigger: -"))
         self._set_status(NO_CAMERA)
         self.roi_button.setEnabled(False)
         self.set_reference_button.setEnabled(False)
         self.detect_button.setEnabled(False)
+        self.reset_roi_button.setEnabled(False)
         self.start_capture(self.camera_combo.currentData())
 
     # --- параметры камеры (V4L2) -------------------------------------------
@@ -245,6 +251,29 @@ class CameraPanel(QWidget):
         self._reference_pending = True
 
     @Slot()
+    def _on_reset_roi(self):
+        """Сбросить выделенную зону к дефолтной (обычно — весь кадр)."""
+        # Выключаем режим выделения, если он был активен.
+        if self.roi_button.isChecked():
+            self.roi_button.setChecked(False)
+        self._reference_pending = False
+        self.roi = getattr(config, "DEFAULT_ROI", None)
+        # Эталон снят вместе с геометрией — детектить не с чем.
+        self.controller.clear_reference()
+        self.controller.reset_confirmation()
+        self.reference_label.setText(self.tr("Reference: NOT SET"))
+        self.change_label.setText(self.tr("Change: -"))
+        self.last_check_label.setText(self.tr("Last check: -"))
+        self.trigger_label.setText(self.tr("Trigger: -"))
+        self._set_status(STATUS_NO_REFERENCE)
+        self.detect_button.setEnabled(False)
+
+    @Slot()
+    def reset_roi(self):
+        """То же, что кнопка Reset zone (для входов GPIO)."""
+        self._on_reset_roi()
+
+    @Slot()
     def arm_reference(self):
         """То же, что кнопка Set reference (используется входами GPIO)."""
         self._on_set_reference()
@@ -291,6 +320,7 @@ class CameraPanel(QWidget):
         self.roi_button.setEnabled(False)
         self.set_reference_button.setEnabled(False)
         self.detect_button.setEnabled(False)
+        self.reset_roi_button.setEnabled(False)
 
     def _on_result(self, frame, status: str, elapsed_ms: float, has_reference: bool,
                    change_ratio: float, boxes: list):
@@ -339,6 +369,7 @@ class CameraPanel(QWidget):
         self.roi_button.setEnabled(True)
         self.set_reference_button.setEnabled(True)
         self.detect_button.setEnabled(has_reference)
+        self.reset_roi_button.setEnabled(True)
 
     def _set_status(self, status: str):
         texts = {
