@@ -12,3 +12,4 @@ wheels/
 # Runtime artifacts
 debug/
 app.log
+camera_settings.json
