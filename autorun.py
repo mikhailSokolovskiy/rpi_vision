@@ -43,27 +43,45 @@ def _run(cmd: list[str]) -> str:
     return result.stdout.strip()
 
 
+def _target_user() -> str:
+    """Пользователь, от имени которого должен бежать сервис.
+
+    При запуске через `sudo python main.py` getpass.getuser() вернёт
+    'root', а нужен тот, кто вызвал sudo — он и есть владелец X-сессии.
+    """
+    return (
+        os.environ.get("SUDO_USER")
+        or os.environ.get("USER")
+        or getpass.getuser()
+    )
+
+
 def render_unit() -> str:
     display = os.environ.get("DISPLAY") or getattr(config, "AUTORUN_DISPLAY", ":0")
-    user = getpass.getuser()
+    user = _target_user()
+    home = Path("/home") / user if user != "root" else Path("/root")
     lines = [
         "[Unit]",
         "Description=rpi-vision camera monitor",
         "After=graphical.target",
+        "Wants=graphical.target",
         "",
         "[Service]",
         "Type=simple",
-        f'WorkingDirectory="{APP_PATH.parent}"',
-        # Пути в кавычках: в ExecStart они разбиваются по пробелам.
-        f'ExecStart="{sys.executable}" "{APP_PATH}"',
+        f"User={user}",
+        f"Group={user}",
+        f"WorkingDirectory={APP_PATH.parent}",
+        f"ExecStart={sys.executable} {APP_PATH}",
         "Restart=on-failure",
         "RestartSec=5",
-        # Qt без DISPLAY к X не подключится и приложение сразу упадёт.
         f"Environment=DISPLAY={display}",
+        f"Environment=XAUTHORITY={home}/.Xauthority",
+        f"Environment=HOME={home}",
+        "",
+        "[Install]",
+        "WantedBy=graphical.target",
+        "",
     ]
-    if user != "root":
-        lines.append(f"User={user}")
-    lines += ["", "[Install]", "WantedBy=graphical.target", ""]
     return "\n".join(lines)
 
 
