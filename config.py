@@ -13,7 +13,7 @@ LOCK_CAMERA_PARAMS = True
 # Ограничение выдачи сверху: не чаще 30 FPS. Самой камере FPS
 # не навязываем (CAP_PROP_FPS не трогаем) — только дросселируем
 # выдачу кадров: если камера медленнее, идём с её скоростью.
-CAPTURE_MAX_FPS = 30
+CAPTURE_MAX_FPS = 60
 # Порядок перебора VideoCapture-бэкендов на Windows (headless-пакета достаточно,
 # здесь важен именно флаг, а не замена на opencv-python).
 # OPENCV_BACKENDS_PREFER = ("DSHOW", "MSMF")
@@ -51,14 +51,13 @@ LOG_FILE = "app.log"
 
 # === GPIO (Raspberry Pi 5 через gpiozero+lgpio) ===
 # Выключено по умолчанию — на Windows/dev ничего не тянем.
-GPIO_ENABLED = False
+GPIO_ENABLED = True
 
 # Выходные пины. Роли:
 #   "alarm" — активен при STATUS_ALARM (подтверждённое изменение);
 #   "ready" — активен, когда задан эталон и камера работает;
 #   можно завести произвольные роли и дёргать их из кода через gpio.set_output(role, True/False).
 GPIO_OUTPUTS = [
-    {"pin": 17, "role": "alarm"},    # по желанию — как было
     {"pin": 5,  "role": "heartbeat"},# ← мигает, пока всё ОК
 ]
 

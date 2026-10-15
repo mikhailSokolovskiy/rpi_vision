@@ -117,7 +117,7 @@ class GPIOManager:
                 pin = int(entry["pin"])
                 role = str(entry.get("role", "output"))
                 dev = DigitalOutputDevice(pin, active_high=active_high,
-                                          initial_value=False)
+                                          initial_value=True)
                 self._outputs[role] = dev
                 log.info("GPIO output pin=%s role=%s active_high=%s", pin, role, active_high)
             except Exception as exc:  # noqa: BLE001

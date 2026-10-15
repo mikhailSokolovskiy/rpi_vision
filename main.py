@@ -25,6 +25,7 @@ from capture import CaptureThread
 from processing import STATUS_ALARM, STATUS_NO_REFERENCE, STATUS_NORMAL, Processor
 
 BASE_DIR = Path(__file__).parent
+_HB_MUTED_STATUSES = (STATUS_ALARM, STATUS_NO_REFERENCE, "NO_CAMERA")
 
 
 class MainWindow(QMainWindow):
@@ -118,7 +119,7 @@ class MainWindow(QMainWindow):
         self._process_thread.start()
 
         self._current_status = "NO_CAMERA"
-        self._heartbeat_state = False
+        self._heartbeat_state = True
         self._hb_timer = QTimer(self)
         self._hb_timer.setInterval(200)
         self._hb_timer.timeout.connect(self._tick_heartbeat)
@@ -133,16 +134,16 @@ class MainWindow(QMainWindow):
             "detect": lambda: QMetaObject.invokeMethod(
                  self, "_on_detect", Qt.ConnectionType.QueuedConnection),
         })
-        gpio.setup()
 
         self._start_capture(self.camera_combo.currentData())
 
     def _tick_heartbeat(self):
-        if self._current_status == STATUS_ALARM:
-            self._heartbeat_state = False
+        if self._current_status in _HB_MUTED_STATUSES:
+            self._heartbeat_state = True
         else:
             self._heartbeat_state = not self._heartbeat_state
         gpio.set_output("heartbeat", self._heartbeat_state)
+        print(self._heartbeat_state)
 
     def _start_capture(self, camera_index):
         if camera_index is None:
@@ -247,7 +248,6 @@ class MainWindow(QMainWindow):
         self.set_reference_button.setEnabled(False)
         self.detect_button.setEnabled(False)
         self._current_status = "NO_CAMERA"
-        gpio.set_alarm(False)
         gpio.set_ready(False)
 
     def _on_result(self, frame, status: str, elapsed_ms: float, has_reference: bool,
@@ -293,7 +293,6 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         self._hb_timer.stop()
         gpio.set_output("heartbeat", False)
-        gpio.set_alarm(False)
         gpio.set_ready(False)
         gpio.close()
         self._stop_capture()
@@ -313,6 +312,9 @@ def main():
             logging.FileHandler(BASE_DIR / config.LOG_FILE, encoding="utf-8"),
         ],
     )
+
+    gpio.setup()
+
 
     app = QApplication(sys.argv)
 
