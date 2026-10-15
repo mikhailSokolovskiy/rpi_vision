@@ -93,11 +93,6 @@ class CameraPanel(QWidget):
             column.addWidget(label)
 
         buttons_row = QHBoxLayout()
-        self.roi_button = QPushButton(self.tr("Select area"))
-        self.roi_button.setCheckable(True)
-        self.roi_button.setEnabled(False)
-        self.roi_button.toggled.connect(self._on_roi_toggled)
-        buttons_row.addWidget(self.roi_button)
         self.reset_roi_button = QPushButton(self.tr("Reset zone"))
         self.reset_roi_button.setEnabled(False)
         self.reset_roi_button.clicked.connect(self._on_reset_roi)
@@ -153,7 +148,6 @@ class CameraPanel(QWidget):
         self.reference_label.setText(self.tr("Reference: NOT SET"))
         self.trigger_label.setText(self.tr("Trigger: -"))
         self._set_status(NO_CAMERA)
-        self.roi_button.setEnabled(False)
         self.set_reference_button.setEnabled(False)
         self.detect_button.setEnabled(False)
         self.reset_roi_button.setEnabled(False)
@@ -222,17 +216,11 @@ class CameraPanel(QWidget):
 
     # --- область интереса и эталон ----------------------------------------
 
-    @Slot(bool)
-    def _on_roi_toggled(self, checked: bool):
-        self.video.set_selection_enabled(checked)
-        if not checked:
-            # Выключили режим, не выделив область — ждать эталона больше нечего.
-            self._reference_pending = False
-
     @Slot(float, float, float, float)
     def _on_roi_selected(self, x0: float, y0: float, x1: float, y1: float):
+        # Выделили — режим рисования больше не нужен.
+        self.video.set_selection_enabled(False)
         self.roi = (x0, y0, x1, y1)
-        # Сменилась геометрия кадра — прежний эталон больше не годится.
         self.controller.clear_reference()
         self.reference_label.setText(self.tr("Reference: NOT SET"))
         self.change_label.setText(self.tr("Change: -"))
@@ -246,19 +234,14 @@ class CameraPanel(QWidget):
     def _on_set_reference(self):
         # Эталон снимается с выбранной области: включаем режим выделения
         # и ждём рамку. Пока область не нарисована — только взводим ожидание.
-        if not self.roi_button.isChecked():
-            self.roi_button.setChecked(True)
+        self.video.set_selection_enabled(True)
         self._reference_pending = True
 
     @Slot()
     def _on_reset_roi(self):
-        """Сбросить выделенную зону к дефолтной (обычно — весь кадр)."""
-        # Выключаем режим выделения, если он был активен.
-        if self.roi_button.isChecked():
-            self.roi_button.setChecked(False)
+        self.video.set_selection_enabled(False)   # ← вместо roi_button.setChecked(False)
         self._reference_pending = False
         self.roi = getattr(config, "DEFAULT_ROI", None)
-        # Эталон снят вместе с геометрией — детектить не с чем.
         self.controller.clear_reference()
         self.controller.reset_confirmation()
         self.reference_label.setText(self.tr("Reference: NOT SET"))
@@ -317,7 +300,6 @@ class CameraPanel(QWidget):
         self.last_check_label.setText(self.tr("Last check: -"))
         self.trigger_label.setText(self.tr("Trigger: -"))
         self.settings_button.setEnabled(False)
-        self.roi_button.setEnabled(False)
         self.set_reference_button.setEnabled(False)
         self.detect_button.setEnabled(False)
         self.reset_roi_button.setEnabled(False)
@@ -366,7 +348,6 @@ class CameraPanel(QWidget):
                 self.tr("Change: {} %").format(round(change_ratio * 100, 2)))
             self.last_check_label.setText(
                 self.tr("Last check: {} ms").format(round(elapsed_ms, 1)))
-        self.roi_button.setEnabled(True)
         self.set_reference_button.setEnabled(True)
         self.detect_button.setEnabled(has_reference)
         self.reset_roi_button.setEnabled(True)
