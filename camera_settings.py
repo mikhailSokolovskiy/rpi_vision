@@ -231,9 +231,17 @@ class CameraSettingsDialog(QDialog):
             if name not in actual:
                 not_supported.append(name)
                 continue
-            if actual[name] != wanted:
+            
+            actual_val = actual[name]
+            
+            # Читаем шаг контрола (например, 5 или 10). Если шаг не указан, берем 1.
+            step = max(1, int(controls_after[name].get("step", 1)))
+            
+            # Если разница БОЛЬШЕ шага — только тогда это реальная ошибка.
+            # Если разница 5 (5005 -> 5000), а шаг 5 — всё ок, молчим.
+            if abs(actual_val - wanted) > step:
                 stuck.append(f"{name}: {self.tr('asked')} {wanted}, "
-                             f"{self.tr('has')} {actual[name]}")
+                             f"{self.tr('has')} {actual_val}")
 
         if not_supported or stuck:
             parts = []

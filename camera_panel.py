@@ -88,6 +88,13 @@ class CameraPanel(QWidget):
         self.last_check_label.setStyleSheet(mono)
         self.trigger_label = QLabel()
         self.trigger_label.setStyleSheet(mono)
+
+        transparent_bg = "background: transparent;"
+        
+        # self.status_label.setStyleSheet("font-weight: bold; " + transparent_bg)
+        # self.reference_label.setStyleSheet(transparent_bg)
+        # self.change_label.setStyleSheet(transparent_bg)
+
         for label in (self.status_label, self.reference_label, self.change_label,
                       self.last_check_label, self.trigger_label):
             column.addWidget(label)
@@ -101,10 +108,10 @@ class CameraPanel(QWidget):
         self.set_reference_button.setEnabled(False)
         self.set_reference_button.clicked.connect(self._on_set_reference)
         buttons_row.addWidget(self.set_reference_button)
-        self.detect_button = QPushButton(self.tr("Detect change"))
-        self.detect_button.setEnabled(False)
-        self.detect_button.clicked.connect(self._on_detect)
-        buttons_row.addWidget(self.detect_button)
+        # self.detect_button = QPushButton(self.tr("Detect change"))
+        # self.detect_button.setEnabled(False)
+        # self.detect_button.clicked.connect(self._on_detect)
+        # buttons_row.addWidget(self.detect_button)
         column.addLayout(buttons_row)
 
         self._set_status(NO_CAMERA)
