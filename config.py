@@ -153,7 +153,7 @@ LOG_FILE = "app.log"
 # Нужны права root (запись в /etc/systemd/system + systemctl enable).
 # Снять уже установленный автозапуск:
 #   uv run python -c "import autorun; autorun.disable()"
-AUTORUN = False
+AUTORUN = True
 # DISPLAY для юнита. На Raspberry Pi OS (X11) обычно ":0".
 AUTORUN_DISPLAY = ":0"
 
