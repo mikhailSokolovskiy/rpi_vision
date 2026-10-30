@@ -422,7 +422,8 @@ def main():
         app.installTranslator(translator)
 
     window = MainWindow()
-    window.show()
+    # window.show()
+    window.showFullScreen()
     sys.exit(app.exec())
 
 
