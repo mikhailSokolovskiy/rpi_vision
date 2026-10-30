@@ -136,6 +136,19 @@ class Camera:
             cap = cv2.VideoCapture(index, flag)
             try:
                 if cap.isOpened():
+
+                     # 1. Включаем MJPG (часто необходимо для высоких разрешений)
+                    cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
+                    
+                    # 2. Требуем разрешение 1280x800
+                    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+                    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 800)
+                    
+                    # 3. Проверяем, что реально применилось
+                    actual_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                    actual_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+
                     if config.LOCK_CAMERA_PARAMS and not applied:
                         self._fix_params(cap)
                     elif applied:

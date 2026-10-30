@@ -198,6 +198,6 @@ UI_BUTTON_MIN_WIDTH = 120
 UI_SPACING = 8                  # между кнопками
 
 # Превью — крупнее, теперь точно видно куда тыкать
-# PREVIEW_WIDTH = 1000
-# PREVIEW_HEIGHT = 750
+PREVIEW_WIDTH = 1280
+PREVIEW_HEIGHT = 800
 MIN_PANEL_WIDTH = 700
