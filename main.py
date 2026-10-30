@@ -22,6 +22,74 @@ from camera_panel import NO_CAMERA, CameraPanel
 
 BASE_DIR = Path(__file__).parent
 
+def app_stylesheet() -> str:
+    return f"""
+    * {{
+        font-family: "DejaVu Sans";
+        font-size: {config.UI_FONT_SIZE}px;
+    }}
+    QMainWindow, QWidget {{
+        background-color: #f5f5f5;
+        color: #202020;
+    }}
+    QPushButton {{
+        min-height: {config.UI_BUTTON_MIN_HEIGHT}px;
+        min-width: {config.UI_BUTTON_MIN_WIDTH}px;
+        padding: 4px 2px;
+        border-radius: 8px;
+        border: 2px solid #888;
+        background-color: #ffffff;
+        color: #202020;
+        font-weight: 600;
+    }}
+    QPushButton:pressed {{
+        background-color: #d8d8d8;
+        border-color: #444;
+    }}
+    QPushButton:disabled {{
+        background-color: #e8e8e8;
+        color: #999;
+        border-color: #ccc;
+    }}
+    QSlider::groove:vertical {{
+        width: 24px;
+        background: #d0d0d0;
+        border-radius: 12px;
+    }}
+    QSlider::handle:vertical {{
+        background: #4a90e2;
+        min-height: 80px;
+        margin: 0 -18px;
+        border-radius: 20px;
+    }}
+    QSlider::handle:vertical:pressed {{
+        background: #2f6fc0;
+    }}
+    QSlider:vertical {{
+        min-width: 90px;
+    }}
+    QSlider::groove:vertical {{
+        width: 16px;
+        background: #d0d0d0;
+        border-radius: 8px;
+    }}
+    QSlider::handle:vertical {{
+        background: #4a90e2;
+        border: 3px solid #2f6fc0;
+        width: 64px;
+        height: 64px;
+        min-width: 64px;
+        min-height: 64px;
+        margin: 0 -24px;
+        border-radius: 32px;
+    }}
+    QSlider::handle:vertical:pressed {{
+        background: #2f6fc0;
+    }}
+    """
+
+
+
 from processing import STATUS_ALARM, STATUS_NO_REFERENCE, STATUS_NORMAL
 
 # Минимальная ширина панели камеры: три кнопки в ряд должны поместиться,
@@ -34,51 +102,59 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle(self.tr("Camera monitor"))
         self._camera_count = max(1, int(getattr(config, "CAMERA_COUNT", 1)))
-        # PREVIEW_WIDTH — суммарная ширина полей превью; при двух камерах
-        # делим её, но не ниже MIN_PANEL_WIDTH, иначе окно ужимается сильнее,
-        # чем нужно ради превью.
+        
+        # Считаем размер панели
         self._panel_width = max(config.PREVIEW_WIDTH // self._camera_count, MIN_PANEL_WIDTH)
-        self.setFixedSize(self._panel_width * self._camera_count + 150,
-                          config.PREVIEW_HEIGHT + 330)
+        self.setMinimumSize(self._panel_width * self._camera_count + 300,
+                            config.PREVIEW_HEIGHT + 200)
 
         central = QWidget()
         self.setCentralWidget(central)
         layout = QVBoxLayout(central)
-        layout.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(20)
 
-        # Список камер общий для всех панелей, поэтому и Refresh один.
         cameras = camera_module.list_cameras()
 
-        top_row = QHBoxLayout()
-        top_row.addStretch(1)
-        self.refresh_button = QPushButton(self.tr("Refresh"))
-        self.refresh_button.clicked.connect(self._on_refresh_cameras)
-        top_row.addWidget(self.refresh_button)
-        layout.addLayout(top_row)
-
         cameras_row = QHBoxLayout()
+        cameras_row.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+        cameras_row.setSpacing(20)
+
         self._panels = []
         self._statuses = [NO_CAMERA] * self._camera_count
+        
+        # 1. Добавляем сами панели камер
         for slot in range(self._camera_count):
             panel = CameraPanel(slot, (self._panel_width, config.PREVIEW_HEIGHT), cameras)
             panel.status_changed.connect(self._on_panel_status)
             self._panels.append(panel)
             cameras_row.addWidget(panel)
-        cameras_row.addLayout(self._build_threshold_slider())
+            
+        # 2. Добавляем кнопку Refresh прямо СЮДА ЖЕ, прижимая её к верху
+        self.refresh_button = QPushButton(self.tr("Refresh"))
+        self.refresh_button.clicked.connect(self._on_refresh_cameras)
+        # AlignTop гарантирует, что она встанет на одну линию с ComboBox и Settings
+        cameras_row.addWidget(self.refresh_button, alignment=Qt.AlignmentFlag.AlignTop)
+
+        # 3. Пружина, которая отодвигает слайдер к правому краю
+        cameras_row.addStretch(1)
+        
+        # 4. Панель со слайдером (кнопки + и -)
+        cameras_row.addLayout(self._build_threshold_panel()) 
+        
         layout.addLayout(cameras_row)
 
+        # --- ИНИЦИАЛИЗАЦИЯ GPIO ---
         self._current_status = NO_CAMERA
         self._heartbeat_state = True
         gpio.set_output("heartbeat", True)
+        
         self._hb_timer = QTimer(self)
         self._hb_timer.setInterval(200)
         self._hb_timer.timeout.connect(self._tick_heartbeat)
         self._hb_timer.start()
 
-        # GPIO: связываем входные пины с действиями и инициализируем железо.
-        # Колбэки зовут те же методы, что и кнопки (arm_reference /
-        # request_detect у каждой панели); QueuedConnection — безопасно
-        # из чужого потока gpiozero.
         gpio.set_callbacks({
             "set_reference": self._on_gpio_action("arm_reference"),
             "detect": self._on_gpio_action("request_detect"),
@@ -108,6 +184,58 @@ class MainWindow(QMainWindow):
         self._update_threshold_label(self.threshold_slider.value())
         slider_col.addWidget(self.threshold_value_label, alignment=Qt.AlignmentFlag.AlignHCenter)
         return slider_col
+
+    def _build_threshold_panel(self) -> QVBoxLayout:
+        col = QVBoxLayout()
+        col.setSpacing(config.UI_SPACING)
+        col.setContentsMargins(8, 0, 8, 0)
+
+        title = QLabel(self.tr("Alarm %"))
+        title.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        title.setStyleSheet(f"font-size: {config.UI_HEADER_FONT_SIZE}px; font-weight: bold;")
+        col.addWidget(title)
+
+        self.threshold_value_label = QLabel()
+        self.threshold_value_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        self.threshold_value_label.setStyleSheet(
+            f"font-size: {config.UI_HEADER_FONT_SIZE + 10}px; "
+            f"font-weight: bold; color: #4a90e2;"
+        )
+        col.addWidget(self.threshold_value_label)
+
+        initial = int(round(config.CHANGE_RATIO_THRESHOLD * 1000))
+        self.threshold_slider = QSlider(Qt.Orientation.Vertical)
+        self.threshold_slider.setRange(1, 200)
+        self.threshold_slider.setValue(initial)   # до connect — не триггерит слот
+        self.threshold_slider.setTickPosition(QSlider.TickPosition.TicksRight)
+        self.threshold_slider.setTickInterval(20)
+        self.threshold_slider.setSingleStep(1)
+        self.threshold_slider.setPageStep(10)
+        self.threshold_slider.setMinimumHeight(380)
+        self.threshold_slider.valueChanged.connect(self._on_threshold_changed)
+        self._update_threshold_label(initial)
+
+        up_btn = QPushButton("+")
+        up_btn.setMinimumHeight(config.UI_BUTTON_MIN_HEIGHT)
+        up_btn.clicked.connect(
+            lambda: self.threshold_slider.setValue(
+                min(200, self.threshold_slider.value() + 5)
+            )
+        )
+        col.addWidget(up_btn)
+
+        col.addWidget(self.threshold_slider, alignment=Qt.AlignmentFlag.AlignHCenter)
+
+        down_btn = QPushButton("−")
+        down_btn.setMinimumHeight(config.UI_BUTTON_MIN_HEIGHT)
+        down_btn.clicked.connect(
+            lambda: self.threshold_slider.setValue(
+                max(1, self.threshold_slider.value() - 5)
+            )
+        )
+        col.addWidget(down_btn)
+
+        return col
 
     @Slot()
     def _on_refresh_cameras(self):
@@ -153,7 +281,7 @@ class MainWindow(QMainWindow):
         else:
             self._heartbeat_state = True
         gpio.set_output("heartbeat", self._heartbeat_state)
-        print(self._heartbeat_state)
+        # print(self._heartbeat_state)
 
     def _update_threshold_label(self, slider_value: int):
         percent = slider_value / 10.0
@@ -286,6 +414,7 @@ def main():
     autorun_setup()
 
     app = QApplication(sys.argv)
+    app.setStyleSheet(app_stylesheet())
 
     translator = QTranslator(app)
     locale = QLocale.system().name().split("_")[0]

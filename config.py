@@ -186,3 +186,18 @@ GPIO_ACTIVE_HIGH = True
 #   0  — держим уровень, пока статус ALARM;
 #   >0 — импульс на КАЖДЫЙ переход NORMAL -> ALARM (удобно для "звонка").
 GPIO_PULSE_MS = 0
+
+
+
+
+# === UI (10" FullHD touchscreen) ===
+UI_FONT_SIZE = 18                # базовый шрифт
+UI_HEADER_FONT_SIZE = 22         # заголовки и значение слайдера
+UI_BUTTON_MIN_HEIGHT = 64        # палец должен уверенно попадать
+UI_BUTTON_MIN_WIDTH = 120
+UI_SPACING = 8                  # между кнопками
+
+# Превью — крупнее, теперь точно видно куда тыкать
+# PREVIEW_WIDTH = 1000
+# PREVIEW_HEIGHT = 750
+MIN_PANEL_WIDTH = 700
